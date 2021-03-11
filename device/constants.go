@@ -39,3 +39,11 @@ const (
 	UnderLoadAfterTime = time.Second // how long does the device remain under load after detected
 	MaxPeers           = 1 << 16     // maximum number of configured peers
 )
+
+// Cipher constants
+const (
+	AES256KeySize   = 32
+	AEADTagSize     = 16
+	NonceSize       = 12
+	CookieNonceSize = 24
+)

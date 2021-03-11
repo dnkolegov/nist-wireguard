@@ -14,7 +14,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"golang.org/x/crypto/chacha20poly1305"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
 
@@ -206,7 +205,7 @@ func (device *Device) RoutineReceiveIncoming(IP int, bind conn.Bind) {
 }
 
 func (device *Device) RoutineDecryption() {
-	var nonce [chacha20poly1305.NonceSize]byte
+	var nonce [NonceSize]byte
 
 	defer device.log.Verbosef("Routine: decryption worker - stopped")
 	device.log.Verbosef("Routine: decryption worker - started")
