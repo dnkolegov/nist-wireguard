@@ -8,12 +8,12 @@ package device
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/hmac"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"sync"
 	"time"
-
-	"golang.org/x/crypto/blake2s"
 
 	"golang.zx2c4.com/wireguard/tai64n"
 )
@@ -47,7 +47,7 @@ func (hs handshakeState) String() string {
 }
 
 const (
-	NoiseConstruction = "Noise_IKpsk2_25519_AES256_BLAKE2s"
+	NoiseConstruction = "Noise_IKpsk2_25519_AES256_SHA256"
 	WGIdentifier      = "WireGuard v1 zx2c4 Jason@zx2c4.com"
 	WGLabelMAC1       = "mac1----"
 	WGLabelCookie     = "cookie--"
@@ -61,13 +61,25 @@ const (
 )
 
 const (
-	MessageInitiationSize      = 148                                      // size of handshake initiation message
-	MessageResponseSize        = 92                                       // size of response message
-	MessageCookieReplySize     = 64                                       // size of cookie reply message
-	MessageTransportHeaderSize = 16                                       // size of data preceding content in transport message
-	MessageTransportSize       = MessageTransportHeaderSize + AEADTagSize // size of empty transport
-	MessageKeepaliveSize       = MessageTransportSize                     // size of keepalive
-	MessageHandshakeSize       = MessageInitiationSize                    // size of largest handshake related message
+	// https://www.wireguard.com/papers/wireguard.pdf#subsubsection.5.4.2
+	// type(1) + reserved(3) + sender(4) + ephemeral(32) + static(32+16) + timestamp(12+16) + mac1(32) + mac2(32)
+	MessageInitiationSize = 180 // size of handshake initiation message
+
+	// https://www.wireguard.com/papers/wireguard.pdf#subsubsection.5.4.3
+	// type(1) + reserved(3) + sender(4) + receiver(4) + ephemeral(32) + empty(32+16) + mac1(32) + mac2(32)
+	MessageResponseSize = 156 // size of response message
+
+	// https://www.wireguard.com/papers/wireguard.pdf#subsubsection.5.4.7
+	// type(1) + reserved(3) + receiver(4) + nonce(24) + cookie(16+16)
+	MessageCookieReplySize = 64 // size of cookie reply message
+
+	// https://www.wireguard.com/papers/wireguard.pdf#subsubsection.5.4.6
+	// type(1) + reserved(3) + receiver(4) + counter(8)
+	MessageTransportHeaderSize = 16 // size of data preceding content in transport message
+
+	MessageTransportSize = MessageTransportHeaderSize + AEADTagSize // size of empty transport
+	MessageKeepaliveSize = MessageTransportSize                     // size of keepalive
+	MessageHandshakeSize = MessageInitiationSize                    // size of largest handshake related message
 )
 
 const (
@@ -88,8 +100,8 @@ type MessageInitiation struct {
 	Ephemeral NoisePublicKey
 	Static    [NoisePublicKeySize + AEADTagSize]byte
 	Timestamp [tai64n.TimestampSize + AEADTagSize]byte
-	MAC1      [blake2s.Size128]byte
-	MAC2      [blake2s.Size128]byte
+	MAC1      [sha256.Size]byte
+	MAC2      [sha256.Size]byte
 }
 
 type MessageResponse struct {
@@ -98,8 +110,8 @@ type MessageResponse struct {
 	Receiver  uint32
 	Ephemeral NoisePublicKey
 	Empty     [AEADTagSize]byte
-	MAC1      [blake2s.Size128]byte
-	MAC2      [blake2s.Size128]byte
+	MAC1      [sha256.Size]byte
+	MAC2      [sha256.Size]byte
 }
 
 type MessageTransport struct {
@@ -113,14 +125,14 @@ type MessageCookieReply struct {
 	Type     uint32
 	Receiver uint32
 	Nonce    [CookieNonceSize]byte
-	Cookie   [blake2s.Size128 + AEADTagSize]byte
+	Cookie   [sha256.Size + AEADTagSize]byte
 }
 
 type Handshake struct {
 	state                     handshakeState
 	mutex                     sync.RWMutex
-	hash                      [blake2s.Size]byte       // hash value
-	chainKey                  [blake2s.Size]byte       // chain key
+	hash                      [sha256.Size]byte        // hash value
+	chainKey                  [sha256.Size]byte        // chain key
 	presharedKey              NoisePresharedKey        // psk
 	localEphemeral            NoisePrivateKey          // ephemeral secret key
 	localIndex                uint32                   // used to clear hash-table
@@ -134,17 +146,17 @@ type Handshake struct {
 }
 
 var (
-	InitialChainKey [blake2s.Size]byte
-	InitialHash     [blake2s.Size]byte
+	InitialChainKey [sha256.Size]byte
+	InitialHash     [sha256.Size]byte
 	ZeroNonce       [NonceSize]byte
 )
 
-func mixKey(dst *[blake2s.Size]byte, c *[blake2s.Size]byte, data []byte) {
+func mixKey(dst *[sha256.Size]byte, c *[sha256.Size]byte, data []byte) {
 	KDF1(dst, c[:], data)
 }
 
-func mixHash(dst *[blake2s.Size]byte, h *[blake2s.Size]byte, data []byte) {
-	hash, _ := blake2s.New256(nil)
+func mixHash(dst *[sha256.Size]byte, h *[sha256.Size]byte, data []byte) {
+	hash := hmac.New(sha256.New, nil)
 	hash.Write(h[:])
 	hash.Write(data)
 	hash.Sum(dst[:0])
@@ -171,7 +183,7 @@ func (h *Handshake) mixKey(data []byte) {
 /* Do basic precomputations
  */
 func init() {
-	InitialChainKey = blake2s.Sum256([]byte(NoiseConstruction))
+	InitialChainKey = sha256.Sum256([]byte(NoiseConstruction))
 	mixHash(&InitialHash, &InitialChainKey, []byte(WGIdentifier))
 }
 
@@ -263,8 +275,8 @@ func (device *Device) CreateMessageInitiation(peer *Peer) (*MessageInitiation, e
 
 func (device *Device) ConsumeMessageInitiation(msg *MessageInitiation) *Peer {
 	var (
-		hash     [blake2s.Size]byte
-		chainKey [blake2s.Size]byte
+		hash     [sha256.Size]byte
+		chainKey [sha256.Size]byte
 	)
 
 	if msg.Type != MessageInitiationType {
@@ -424,7 +436,7 @@ func (device *Device) CreateMessageResponse(peer *Peer) (*MessageResponse, error
 
 	// add preshared key
 
-	var tau [blake2s.Size]byte
+	var tau [sha256.Size]byte
 	var key [AES256KeySize]byte
 
 	KDF3(
@@ -463,8 +475,8 @@ func (device *Device) ConsumeMessageResponse(msg *MessageResponse) *Peer {
 	}
 
 	var (
-		hash     [blake2s.Size]byte
-		chainKey [blake2s.Size]byte
+		hash     [sha256.Size]byte
+		chainKey [sha256.Size]byte
 	)
 
 	ok := func() bool {
@@ -502,7 +514,7 @@ func (device *Device) ConsumeMessageResponse(msg *MessageResponse) *Peer {
 
 		// add preshared key (psk)
 
-		var tau [blake2s.Size]byte
+		var tau [sha256.Size]byte
 		var key [AES256KeySize]byte
 		KDF3(
 			&chainKey,

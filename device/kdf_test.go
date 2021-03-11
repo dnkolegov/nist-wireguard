@@ -6,10 +6,9 @@
 package device
 
 import (
+	"crypto/sha256"
 	"encoding/hex"
 	"testing"
-
-	"golang.org/x/crypto/blake2s"
 )
 
 type KDFTest struct {
@@ -51,7 +50,7 @@ func TestKDF(t *testing.T) {
 		},
 	}
 
-	var t0, t1, t2 [blake2s.Size]byte
+	var t0, t1, t2 [sha256.Size]byte
 
 	for _, test := range tests {
 		key, _ := hex.DecodeString(test.key)
