@@ -70,8 +70,8 @@ const (
 	MessageResponseSize = 156 // size of response message
 
 	// https://www.wireguard.com/papers/wireguard.pdf#subsubsection.5.4.7
-	// type(1) + reserved(3) + receiver(4) + nonce(24) + cookie(16+16)
-	MessageCookieReplySize = 64 // size of cookie reply message
+	// type(1) + reserved(3) + receiver(4) + nonce(24) + cookie(32+16)
+	MessageCookieReplySize = 80 // size of cookie reply message
 
 	// https://www.wireguard.com/papers/wireguard.pdf#subsubsection.5.4.6
 	// type(1) + reserved(3) + receiver(4) + counter(8)
