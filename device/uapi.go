@@ -60,7 +60,7 @@ func (device *Device) IpcGetOperation(w io.Writer) error {
 		fmt.Fprintf(buf, format, args...)
 		buf.WriteByte('\n')
 	}
-	keyf := func(prefix string, key *[32]byte) {
+	keyf := func(prefix string, key []byte) {
 		buf.Grow(len(key)*2 + 2 + len(prefix))
 		buf.WriteString(prefix)
 		buf.WriteByte('=')
@@ -88,7 +88,7 @@ func (device *Device) IpcGetOperation(w io.Writer) error {
 		// serialize device related values
 
 		if !device.staticIdentity.privateKey.IsZero() {
-			keyf("private_key", (*[32]byte)(&device.staticIdentity.privateKey))
+			keyf("private_key", device.staticIdentity.privateKey[:])
 		}
 
 		if device.net.port != 0 {
@@ -105,8 +105,8 @@ func (device *Device) IpcGetOperation(w io.Writer) error {
 			peer.RLock()
 			defer peer.RUnlock()
 
-			keyf("public_key", (*[32]byte)(&peer.handshake.remoteStatic))
-			keyf("preshared_key", (*[32]byte)(&peer.handshake.presharedKey))
+			keyf("public_key", peer.handshake.remoteStatic[:])
+			keyf("preshared_key", peer.handshake.presharedKey[:])
 			sendf("protocol_version=1")
 			if peer.endpoint != nil {
 				sendf("endpoint=%s", peer.endpoint.DstToString())

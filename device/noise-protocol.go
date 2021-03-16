@@ -47,7 +47,7 @@ func (hs handshakeState) String() string {
 }
 
 const (
-	NoiseConstruction = "Noise_IKpsk2_25519_AES256_SHA256"
+	NoiseConstruction = "Noise_IKpsk2_P521_AES256_SHA256"
 	WGIdentifier      = "WireGuard v1 zx2c4 Jason@zx2c4.com"
 	WGLabelMAC1       = "mac1----"
 	WGLabelCookie     = "cookie--"
@@ -62,12 +62,12 @@ const (
 
 const (
 	// https://www.wireguard.com/papers/wireguard.pdf#subsubsection.5.4.2
-	// type(1) + reserved(3) + sender(4) + ephemeral(32) + static(32+16) + timestamp(12+16) + mac1(32) + mac2(32)
-	MessageInitiationSize = 180 // size of handshake initiation message
+	// type(1) + reserved(3) + sender(4) + ephemeral(67) + static(67+16) + timestamp(12+16) + mac1(32) + mac2(32)
+	MessageInitiationSize = 250 // size of handshake initiation message
 
 	// https://www.wireguard.com/papers/wireguard.pdf#subsubsection.5.4.3
-	// type(1) + reserved(3) + sender(4) + receiver(4) + ephemeral(32) + empty(0+16) + mac1(32) + mac2(32)
-	MessageResponseSize = 124 // size of response message
+	// type(1) + reserved(3) + sender(4) + receiver(4) + ephemeral(67) + empty(0+16) + mac1(32) + mac2(32)
+	MessageResponseSize = 159 // size of response message
 
 	// https://www.wireguard.com/papers/wireguard.pdf#subsubsection.5.4.7
 	// type(1) + reserved(3) + receiver(4) + nonce(24) + cookie(32+16)

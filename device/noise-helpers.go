@@ -6,13 +6,14 @@
 package device
 
 import (
+	"crypto/elliptic"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
-
-	"golang.org/x/crypto/curve25519"
 )
+
+var curve = elliptic.P521()
 
 /* KDF related functions.
  * HMAC-based Key Derivation Function (HKDF)
@@ -69,27 +70,22 @@ func setZero(arr []byte) {
 	}
 }
 
-func (sk *NoisePrivateKey) clamp() {
-	sk[0] &= 248
-	sk[31] = (sk[31] & 127) | 64
-}
-
 func newPrivateKey() (sk NoisePrivateKey, err error) {
-	_, err = rand.Read(sk[:])
-	sk.clamp()
+	private, _, _, err := elliptic.GenerateKey(curve, rand.Reader)
+	copy(sk[:], private[:])
 	return
 }
 
 func (sk *NoisePrivateKey) publicKey() (pk NoisePublicKey) {
-	apk := (*[NoisePublicKeySize]byte)(&pk)
-	ask := (*[NoisePrivateKeySize]byte)(sk)
-	curve25519.ScalarBaseMult(apk, ask)
+	x, y := curve.ScalarBaseMult(sk[:])
+	public := elliptic.MarshalCompressed(curve, x, y)
+	copy(pk[:], public[:])
 	return
 }
 
 func (sk *NoisePrivateKey) sharedSecret(pk NoisePublicKey) (ss [NoisePublicKeySize]byte) {
-	apk := (*[NoisePublicKeySize]byte)(&pk)
-	ask := (*[NoisePrivateKeySize]byte)(sk)
-	curve25519.ScalarMult(&ss, ask, apk)
-	return ss
+	x, y := elliptic.UnmarshalCompressed(curve, pk[:])
+	x, y = curve.ScalarMult(x, y, sk[:])
+	copy(ss[:], elliptic.MarshalCompressed(curve, x, y))
+	return
 }
