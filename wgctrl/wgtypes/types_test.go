@@ -2,13 +2,12 @@ package wgtypes_test
 
 import (
 	"bytes"
+	"crypto/elliptic"
 	"fmt"
-	"math/big"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 
-	"golang.zx2c4.com/wireguard/crypto/gost/gost3410"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
@@ -16,8 +15,8 @@ func TestPreparedKeys(t *testing.T) {
 	// Keys generated via "wg key" and "wg pubkey" for comparison
 	// with this Go implementation.
 	const (
-		private = "2CQIavBMaPlK2Ey/yH5ehqcRNuCLFmjSCvhL9uRnvBo="
-		public  = "Ahu2XTXZWb1GJUpiASebdl1hJA2ZfUkhFz/aSqBZhwrf"
+		private = "AWbv2os59B+t0WEd6Q0bMFjBxstWuRKAUPS4aa7Lvs0Rkbm7bryiisF/7SJGa8guGUzloAUKzrFWnguM3cDlN5M3"
+		public  = "AgCk516rZpYP6+/WIc3VEoqUJHoE95xecn/Q0Btm3Q6aoWbNHwbcbbFfLDX8XT5eLQ30buo4LNwwY5p9Y7snXXQWPA=="
 	)
 
 	priv, err := wgtypes.ParseKey(private)
@@ -39,18 +38,9 @@ func TestKeyExchange(t *testing.T) {
 	privA, pubA := mustKeyPair()
 	privB, pubB := mustKeyPair()
 
-	// Perform ECDH key exhange: https://cr.yp.to/ecdh.html.
-	ukm := big.NewInt(1)
-	sharedA, err := privA.KEK(pubB, ukm)
-	if err != nil {
-		t.Fatalf("failed to perform KEK A: %v", err)
-	}
-
-	ukm = big.NewInt(1)
-	sharedB, err := privB.KEK(pubA, ukm)
-	if err != nil {
-		t.Fatalf("failed to perform KEK B: %v", err)
-	}
+	// Perform ECDH key exhange
+	sharedA := sharedSecret(privA, pubB)
+	sharedB := sharedSecret(privB, pubA)
 
 	if diff := cmp.Diff(sharedA, sharedB); diff != "" {
 		t.Fatalf("unexpected shared secret (-want +got):\n%s", diff)
@@ -85,12 +75,12 @@ func TestBadKeys(t *testing.T) {
 		},
 		{
 			name: "long base64",
-			b:    []byte("ZGVhZGJlZWZkZWFkYmVlZmRlYWRiZWVmZGVhZGJlZWZkZWFkYmVlZg=="),
+			b:    []byte("aEYETYwTBo4R9pPfAkVtMx2sDhZRshDkuQ6OuMROaREzmygO32FDBRrmGl9KGVj9/07yPh2KrwUJddNxc/h22J1HfQtdDg=="),
 			fn:   parseKey,
 		},
 		{
 			name: "long bytes",
-			b:    bytes.Repeat([]byte{0xff}, 40),
+			b:    bytes.Repeat([]byte{0xff}, 70),
 			fn:   wgtypes.NewKey,
 		},
 	}
@@ -107,16 +97,23 @@ func TestBadKeys(t *testing.T) {
 	}
 }
 
-func mustKeyPair() (private *gost3410.PrivateKey, public *gost3410.PublicKey) {
-	priv, err := wgtypes.GeneratePrivateKey()
+func mustKeyPair() (private wgtypes.Key, public wgtypes.Key) {
+	var err error
+
+	private, err = wgtypes.GeneratePrivateKey()
 	if err != nil {
 		panicf("failed to generate private key: %v", err)
 	}
 
-	privateKey, _ := gost3410.NewPrivateKey(wgtypes.Curve, priv)
-	publicKey, _ := privateKey.PublicKey()
+	public = private.PublicKey()
 
-	return privateKey, publicKey
+	return private, public
+}
+
+func sharedSecret(private wgtypes.Key, public wgtypes.Key) wgtypes.Key {
+	x, y := elliptic.UnmarshalCompressed(wgtypes.Curve, public)
+	x, y = wgtypes.Curve.ScalarMult(x, y, private)
+	return elliptic.MarshalCompressed(wgtypes.Curve, x, y)
 }
 
 func panicf(format string, a ...interface{}) {

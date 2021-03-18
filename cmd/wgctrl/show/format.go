@@ -17,6 +17,7 @@ import (
 )
 
 var zeroPrivateKey = [wgtypes.PrivateKeyLen]byte{}
+var zeroPsk = [wgtypes.PskLen]byte{}
 var zeroPublicKey = [wgtypes.PublicKeyLen]byte{}
 
 func prettyTime(left int64) string {
@@ -101,7 +102,7 @@ func prettyPrint(out io.Writer, device *wgtypes.Device) {
 
 	for _, peer := range device.Peers {
 		fmt.Fprintf(out, "\npeer: %s\n", base64.StdEncoding.EncodeToString(peer.PublicKey))
-		if !bytes.Equal(peer.PresharedKey, zeroPrivateKey[:]) {
+		if !bytes.Equal(peer.PresharedKey, zeroPsk[:]) {
 			fmt.Fprintf(out, "  preshared key: %s\n", base64.StdEncoding.EncodeToString(peer.PresharedKey))
 		}
 		if peer.Endpoint != nil {
@@ -175,7 +176,7 @@ func dumpPrint(out io.Writer, device *wgtypes.Device, showDeviceName bool) {
 
 		fmt.Fprintf(out, "%s\t", base64.StdEncoding.EncodeToString(peer.PublicKey))
 
-		if bytes.Equal(peer.PresharedKey, zeroPrivateKey[:]) {
+		if bytes.Equal(peer.PresharedKey, zeroPsk[:]) {
 			fmt.Fprintf(out, "(none)\t")
 		} else {
 			fmt.Fprintf(out, "%s\t", base64.StdEncoding.EncodeToString(peer.PresharedKey))
@@ -304,7 +305,6 @@ func uglyPrint(out io.Writer, device *wgtypes.Device, param string, showDeviceNa
 			}
 		}
 	} else if param == "preshared-keys" {
-		zeroBytes := make([]byte, len(device.PrivateKey))
 		for _, peer := range device.Peers {
 			if showDeviceName {
 				fmt.Fprintf(out, "%s\t", device.Name)
@@ -312,7 +312,7 @@ func uglyPrint(out io.Writer, device *wgtypes.Device, param string, showDeviceNa
 
 			fmt.Fprintf(out, "%s\t", base64.StdEncoding.EncodeToString(peer.PublicKey))
 
-			if bytes.Equal(peer.PresharedKey, zeroBytes) {
+			if bytes.Equal(peer.PresharedKey, zeroPsk[:]) {
 				fmt.Fprintf(out, "(none)\n")
 			} else {
 				fmt.Fprintf(out, "%s\n", base64.StdEncoding.EncodeToString(peer.PresharedKey))
@@ -350,7 +350,7 @@ func printConf(out io.Writer, device *wgtypes.Device) {
 	for _, peer := range device.Peers {
 		fmt.Fprintf(out, "\n[Peer]\nPublicKey = %s\n", base64.StdEncoding.EncodeToString(peer.PublicKey))
 
-		if !bytes.Equal(peer.PresharedKey, zeroPrivateKey[:]) {
+		if !bytes.Equal(peer.PresharedKey, zeroPsk[:]) {
 			fmt.Fprintf(out, "PresharedKey = %s\n", base64.StdEncoding.EncodeToString(peer.PresharedKey))
 		}
 
