@@ -4,7 +4,9 @@ This is a reference implementation of the WireGuard protocol with NIST cipher su
 
 The implementation is based on WireGuard-Go project.
 
-It has the same semantics as the original WireGuard protocol but employs the cryptographic algorithms defined by the Russian national standards (GOST).
+It has the same semantics as the original WireGuard protocol but employs the cryptographic algorithms used in TLS 1.3.
+
+There is also [Ru-WireGuard](https://github.com/bi-zone/ruwireguard-go) with GOST cryptographic primitives.
 
 ## Warnings
 - The code is experimental. You must not use this in production
