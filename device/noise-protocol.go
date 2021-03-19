@@ -9,7 +9,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/hmac"
-	"crypto/sha256"
+	"crypto/sha512"
 	"errors"
 	"fmt"
 	"sync"
@@ -47,7 +47,7 @@ func (hs handshakeState) String() string {
 }
 
 const (
-	NoiseConstruction = "Noise_IKpsk2_P521_AES256_SHA256"
+	NoiseConstruction = "Noise_IKpsk2_P521_AES256_SHA384"
 	WGIdentifier      = "WireGuard v1 zx2c4 Jason@zx2c4.com"
 	WGLabelMAC1       = "mac1----"
 	WGLabelCookie     = "cookie--"
@@ -62,16 +62,16 @@ const (
 
 const (
 	// https://www.wireguard.com/papers/wireguard.pdf#subsubsection.5.4.2
-	// type(1) + reserved(3) + sender(4) + ephemeral(67) + static(67+16) + timestamp(12+16) + mac1(32) + mac2(32)
-	MessageInitiationSize = 250 // size of handshake initiation message
+	// type(1) + reserved(3) + sender(4) + ephemeral(67) + static(67+16) + timestamp(12+16) + mac1(48) + mac2(48)
+	MessageInitiationSize = 282 // size of handshake initiation message
 
 	// https://www.wireguard.com/papers/wireguard.pdf#subsubsection.5.4.3
-	// type(1) + reserved(3) + sender(4) + receiver(4) + ephemeral(67) + empty(0+16) + mac1(32) + mac2(32)
-	MessageResponseSize = 159 // size of response message
+	// type(1) + reserved(3) + sender(4) + receiver(4) + ephemeral(67) + empty(0+16) + mac1(48) + mac2(48)
+	MessageResponseSize = 191 // size of response message
 
 	// https://www.wireguard.com/papers/wireguard.pdf#subsubsection.5.4.7
-	// type(1) + reserved(3) + receiver(4) + nonce(24) + cookie(32+16)
-	MessageCookieReplySize = 80 // size of cookie reply message
+	// type(1) + reserved(3) + receiver(4) + nonce(24) + cookie(48+16)
+	MessageCookieReplySize = 96 // size of cookie reply message
 
 	// https://www.wireguard.com/papers/wireguard.pdf#subsubsection.5.4.6
 	// type(1) + reserved(3) + receiver(4) + counter(8)
@@ -100,8 +100,8 @@ type MessageInitiation struct {
 	Ephemeral NoisePublicKey
 	Static    [NoisePublicKeySize + AEADTagSize]byte
 	Timestamp [tai64n.TimestampSize + AEADTagSize]byte
-	MAC1      [sha256.Size]byte
-	MAC2      [sha256.Size]byte
+	MAC1      [sha512.Size384]byte
+	MAC2      [sha512.Size384]byte
 }
 
 type MessageResponse struct {
@@ -110,8 +110,8 @@ type MessageResponse struct {
 	Receiver  uint32
 	Ephemeral NoisePublicKey
 	Empty     [AEADTagSize]byte
-	MAC1      [sha256.Size]byte
-	MAC2      [sha256.Size]byte
+	MAC1      [sha512.Size384]byte
+	MAC2      [sha512.Size384]byte
 }
 
 type MessageTransport struct {
@@ -125,14 +125,14 @@ type MessageCookieReply struct {
 	Type     uint32
 	Receiver uint32
 	Nonce    [CookieNonceSize]byte
-	Cookie   [sha256.Size + AEADTagSize]byte
+	Cookie   [sha512.Size384 + AEADTagSize]byte
 }
 
 type Handshake struct {
 	state                     handshakeState
 	mutex                     sync.RWMutex
-	hash                      [sha256.Size]byte        // hash value
-	chainKey                  [sha256.Size]byte        // chain key
+	hash                      [sha512.Size384]byte        // hash value
+	chainKey                  [sha512.Size384]byte        // chain key
 	presharedKey              NoisePresharedKey        // psk
 	localEphemeral            NoisePrivateKey          // ephemeral secret key
 	localIndex                uint32                   // used to clear hash-table
@@ -146,17 +146,17 @@ type Handshake struct {
 }
 
 var (
-	InitialChainKey [sha256.Size]byte
-	InitialHash     [sha256.Size]byte
+	InitialChainKey [sha512.Size384]byte
+	InitialHash     [sha512.Size384]byte
 	ZeroNonce       [NonceSize]byte
 )
 
-func mixKey(dst *[sha256.Size]byte, c *[sha256.Size]byte, data []byte) {
+func mixKey(dst *[sha512.Size384]byte, c *[sha512.Size384]byte, data []byte) {
 	KDF1(dst, c[:], data)
 }
 
-func mixHash(dst *[sha256.Size]byte, h *[sha256.Size]byte, data []byte) {
-	hash := hmac.New(sha256.New, nil)
+func mixHash(dst *[sha512.Size384]byte, h *[sha512.Size384]byte, data []byte) {
+	hash := hmac.New(sha512.New384, nil)
 	hash.Write(h[:])
 	hash.Write(data)
 	hash.Sum(dst[:0])
@@ -183,7 +183,7 @@ func (h *Handshake) mixKey(data []byte) {
 /* Do basic precomputations
  */
 func init() {
-	InitialChainKey = sha256.Sum256([]byte(NoiseConstruction))
+	InitialChainKey = sha512.Sum384([]byte(NoiseConstruction))
 	mixHash(&InitialHash, &InitialChainKey, []byte(WGIdentifier))
 }
 
@@ -221,14 +221,14 @@ func (device *Device) CreateMessageInitiation(peer *Peer) (*MessageInitiation, e
 	if isZero(ss[:]) {
 		return nil, errZeroECDHResult
 	}
-	var key [AES256KeySize]byte
+	var tkey [sha512.Size384]byte
 	KDF2(
 		&handshake.chainKey,
-		&key,
+		&tkey,
 		handshake.chainKey[:],
 		ss[:],
 	)
-	aesCipher, err := aes.NewCipher(key[:])
+	aesCipher, err := aes.NewCipher(tkey[:AES256KeySize])
 	if err != nil {
 		return nil, err
 	}
@@ -245,12 +245,12 @@ func (device *Device) CreateMessageInitiation(peer *Peer) (*MessageInitiation, e
 	}
 	KDF2(
 		&handshake.chainKey,
-		&key,
+		&tkey,
 		handshake.chainKey[:],
 		handshake.precomputedStaticStatic[:],
 	)
 	timestamp := tai64n.Now()
-	aesCipher, err = aes.NewCipher(key[:])
+	aesCipher, err = aes.NewCipher(tkey[:AES256KeySize])
 	if err != nil {
 		return nil, err
 	}
@@ -275,8 +275,8 @@ func (device *Device) CreateMessageInitiation(peer *Peer) (*MessageInitiation, e
 
 func (device *Device) ConsumeMessageInitiation(msg *MessageInitiation) *Peer {
 	var (
-		hash     [sha256.Size]byte
-		chainKey [sha256.Size]byte
+		hash     [sha512.Size384]byte
+		chainKey [sha512.Size384]byte
 	)
 
 	if msg.Type != MessageInitiationType {
@@ -293,13 +293,13 @@ func (device *Device) ConsumeMessageInitiation(msg *MessageInitiation) *Peer {
 	// decrypt static key
 	var err error
 	var peerPK NoisePublicKey
-	var key [AES256KeySize]byte
+	var tkey [sha512.Size384]byte
 	ss := device.staticIdentity.privateKey.sharedSecret(msg.Ephemeral)
 	if isZero(ss[:]) {
 		return nil
 	}
-	KDF2(&chainKey, &key, chainKey[:], ss[:])
-	aesCipher, err := aes.NewCipher(key[:])
+	KDF2(&chainKey, &tkey, chainKey[:], ss[:])
+	aesCipher, err := aes.NewCipher(tkey[:AES256KeySize])
 	if err != nil {
 		return nil
 	}
@@ -334,11 +334,11 @@ func (device *Device) ConsumeMessageInitiation(msg *MessageInitiation) *Peer {
 	}
 	KDF2(
 		&chainKey,
-		&key,
+		&tkey,
 		chainKey[:],
 		handshake.precomputedStaticStatic[:],
 	)
-	aesCipher, err = aes.NewCipher(key[:])
+	aesCipher, err = aes.NewCipher(tkey[:AES256KeySize])
 	if err != nil {
 		handshake.mutex.RUnlock()
 		return nil
@@ -436,13 +436,13 @@ func (device *Device) CreateMessageResponse(peer *Peer) (*MessageResponse, error
 
 	// add preshared key
 
-	var tau [sha256.Size]byte
-	var key [AES256KeySize]byte
+	var tau [sha512.Size384]byte
+	var tkey [sha512.Size384]byte
 
 	KDF3(
 		&handshake.chainKey,
 		&tau,
-		&key,
+		&tkey,
 		handshake.chainKey[:],
 		handshake.presharedKey[:],
 	)
@@ -450,7 +450,7 @@ func (device *Device) CreateMessageResponse(peer *Peer) (*MessageResponse, error
 	handshake.mixHash(tau[:])
 
 	func() {
-		aesCipher, _ := aes.NewCipher(key[:])
+		aesCipher, _ := aes.NewCipher(tkey[:AES256KeySize])
 		aesGcm, _ := cipher.NewGCMWithNonceSize(aesCipher, NonceSize)
 		aesGcm.Seal(msg.Empty[:0], ZeroNonce[:], nil, handshake.hash[:])
 		handshake.mixHash(msg.Empty[:])
@@ -475,8 +475,8 @@ func (device *Device) ConsumeMessageResponse(msg *MessageResponse) *Peer {
 	}
 
 	var (
-		hash     [sha256.Size]byte
-		chainKey [sha256.Size]byte
+		hash     [sha512.Size384]byte
+		chainKey [sha512.Size384]byte
 	)
 
 	ok := func() bool {
@@ -514,12 +514,12 @@ func (device *Device) ConsumeMessageResponse(msg *MessageResponse) *Peer {
 
 		// add preshared key (psk)
 
-		var tau [sha256.Size]byte
-		var key [AES256KeySize]byte
+		var tau [sha512.Size384]byte
+		var tkey [sha512.Size384]byte
 		KDF3(
 			&chainKey,
 			&tau,
-			&key,
+			&tkey,
 			chainKey[:],
 			handshake.presharedKey[:],
 		)
@@ -527,7 +527,7 @@ func (device *Device) ConsumeMessageResponse(msg *MessageResponse) *Peer {
 
 		// authenticate transcript
 
-		aesCipher, err := aes.NewCipher(key[:])
+		aesCipher, err := aes.NewCipher(tkey[:AES256KeySize])
 		if err != nil {
 			return false
 		}
@@ -576,21 +576,22 @@ func (peer *Peer) BeginSymmetricSession() error {
 	// derive keys
 
 	var isInitiator bool
-	var sendKey [AES256KeySize]byte
-	var recvKey [AES256KeySize]byte
+
+	var tsendKey [sha512.Size384]byte
+	var trecvKey [sha512.Size384]byte
 
 	if handshake.state == handshakeResponseConsumed {
 		KDF2(
-			&sendKey,
-			&recvKey,
+			&tsendKey,
+			&trecvKey,
 			handshake.chainKey[:],
 			nil,
 		)
 		isInitiator = true
 	} else if handshake.state == handshakeResponseCreated {
 		KDF2(
-			&recvKey,
-			&sendKey,
+			&trecvKey,
+			&tsendKey,
 			handshake.chainKey[:],
 			nil,
 		)
@@ -609,13 +610,13 @@ func (peer *Peer) BeginSymmetricSession() error {
 	// create AEAD instances
 
 	keypair := new(Keypair)
-	aesCipher, _ := aes.NewCipher(sendKey[:])
+	aesCipher, _ := aes.NewCipher(tsendKey[:AES256KeySize])
 	keypair.send, _ = cipher.NewGCM(aesCipher)
-	aesCipher, _ = aes.NewCipher(recvKey[:])
+	aesCipher, _ = aes.NewCipher(trecvKey[:AES256KeySize])
 	keypair.receive, _ = cipher.NewGCM(aesCipher)
 
-	setZero(sendKey[:])
-	setZero(recvKey[:])
+	setZero(tsendKey[:])
+	setZero(trecvKey[:])
 
 	keypair.created = time.Now()
 	keypair.replayFilter.Reset()

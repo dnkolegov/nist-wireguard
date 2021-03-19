@@ -9,7 +9,7 @@ import (
 	"crypto/elliptic"
 	"crypto/hmac"
 	"crypto/rand"
-	"crypto/sha256"
+	"crypto/sha512"
 	"crypto/subtle"
 )
 
@@ -20,39 +20,43 @@ var curve = elliptic.P521()
  * https://tools.ietf.org/html/rfc5869
  */
 
-func HMAC1(sum *[sha256.Size]byte, key, in0 []byte) {
-	mac := hmac.New(sha256.New, key)
+func HMAC1(sum *[sha512.Size384]byte, key, in0 []byte) {
+	mac := hmac.New(sha512.New384, key)
 	mac.Write(in0)
 	mac.Sum(sum[:0])
 }
 
-func HMAC2(sum *[sha256.Size]byte, key, in0, in1 []byte) {
-	mac := hmac.New(sha256.New, key)
+func HMAC2(sum *[sha512.Size384]byte, key, in0, in1 []byte) {
+	mac := hmac.New(sha512.New384, key)
 	mac.Write(in0)
 	mac.Write(in1)
 	mac.Sum(sum[:0])
 }
 
-func KDF1(t0 *[sha256.Size]byte, key, input []byte) {
+func KDF1(t0 *[sha512.Size384]byte, key, input []byte) {
 	HMAC1(t0, key, input)
 	HMAC1(t0, t0[:], []byte{0x1})
 }
 
-func KDF2(t0, t1 *[sha256.Size]byte, key, input []byte) {
-	var prk [sha256.Size]byte
+func KDF2(t0, t1 *[sha512.Size384]byte, key, input []byte) {
+	var prk [sha512.Size384]byte
 	HMAC1(&prk, key, input)
 	HMAC1(t0, prk[:], []byte{0x1})
 	HMAC2(t1, prk[:], t0[:], []byte{0x2})
 	setZero(prk[:])
 }
 
-func KDF3(t0, t1, t2 *[sha256.Size]byte, key, input []byte) {
-	var prk [sha256.Size]byte
+func KDF3(t0, t1, t2 *[sha512.Size384]byte, key, input []byte) {
+	var prk, prk1, prk2 [sha512.Size384]byte
 	HMAC1(&prk, key, input)
 	HMAC1(t0, prk[:], []byte{0x1})
-	HMAC2(t1, prk[:], t0[:], []byte{0x2})
-	HMAC2(t2, prk[:], t1[:], []byte{0x3})
+	HMAC2(&prk1, prk[:], t0[:], []byte{0x2})
+	HMAC2(&prk2, prk[:], t1[:], []byte{0x3})
+	copy(t1[:], prk1[:32])
+	copy(t2[:], prk2[:32])
 	setZero(prk[:])
+	setZero(prk1[:])
+	setZero(prk2[:])
 }
 
 func isZero(val []byte) bool {

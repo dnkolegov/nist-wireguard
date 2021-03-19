@@ -10,7 +10,7 @@ import (
 	"crypto/cipher"
 	"crypto/hmac"
 	"crypto/rand"
-	"crypto/sha256"
+	"crypto/sha512"
 	"sync"
 	"time"
 )
@@ -18,10 +18,10 @@ import (
 type CookieChecker struct {
 	sync.RWMutex
 	mac1 struct {
-		key [sha256.Size]byte
+		key [sha512.Size384]byte
 	}
 	mac2 struct {
-		secret        [sha256.Size]byte
+		secret        [sha512.Size384]byte
 		secretSet     time.Time
 		encryptionKey [AES256KeySize]byte
 	}
@@ -30,13 +30,13 @@ type CookieChecker struct {
 type CookieGenerator struct {
 	sync.RWMutex
 	mac1 struct {
-		key [sha256.Size]byte
+		key [sha512.Size384]byte
 	}
 	mac2 struct {
-		cookie        [sha256.Size]byte
+		cookie        [sha512.Size384]byte
 		cookieSet     time.Time
 		hasLastMAC1   bool
-		lastMAC1      [sha256.Size]byte
+		lastMAC1      [sha512.Size384]byte
 		encryptionKey [AES256KeySize]byte
 	}
 }
@@ -48,7 +48,7 @@ func (st *CookieChecker) Init(pk NoisePublicKey) {
 	// mac1 state
 
 	func() {
-		hash := hmac.New(sha256.New, nil)
+		hash := hmac.New(sha512.New384, nil)
 		hash.Write([]byte(WGLabelMAC1))
 		hash.Write(pk[:])
 		hash.Sum(st.mac1.key[:0])
@@ -57,7 +57,7 @@ func (st *CookieChecker) Init(pk NoisePublicKey) {
 	// mac2 state
 
 	func() {
-		hash := hmac.New(sha256.New, nil)
+		hash := hmac.New(sha512.New384, nil)
 		hash.Write([]byte(WGLabelCookie))
 		hash.Write(pk[:])
 		hash.Sum(st.mac2.encryptionKey[:0])
@@ -71,12 +71,12 @@ func (st *CookieChecker) CheckMAC1(msg []byte) bool {
 	defer st.RUnlock()
 
 	size := len(msg)
-	smac2 := size - sha256.Size
-	smac1 := smac2 - sha256.Size
+	smac2 := size - sha512.Size384
+	smac1 := smac2 - sha512.Size384
 
-	var mac1 [sha256.Size]byte
+	var mac1 [sha512.Size384]byte
 
-	mac := hmac.New(sha256.New, st.mac1.key[:])
+	mac := hmac.New(sha512.New384, st.mac1.key[:])
 	mac.Write(msg[:smac1])
 	mac.Sum(mac1[:0])
 
@@ -93,20 +93,20 @@ func (st *CookieChecker) CheckMAC2(msg []byte, src []byte) bool {
 
 	// derive cookie key
 
-	var cookie [sha256.Size]byte
+	var cookie [sha512.Size384]byte
 	func() {
-		mac := hmac.New(sha256.New, st.mac2.secret[:])
+		mac := hmac.New(sha512.New384, st.mac2.secret[:])
 		mac.Write(src)
 		mac.Sum(cookie[:0])
 	}()
 
 	// calculate mac of packet (including mac1)
 
-	smac2 := len(msg) - sha256.Size
+	smac2 := len(msg) - sha512.Size384
 
-	var mac2 [sha256.Size]byte
+	var mac2 [sha512.Size384]byte
 	func() {
-		mac := hmac.New(sha256.New, cookie[:])
+		mac := hmac.New(sha512.New384, cookie[:])
 		mac.Write(msg[:smac2])
 		mac.Sum(mac2[:0])
 	}()
@@ -139,9 +139,9 @@ func (st *CookieChecker) CreateReply(
 
 	// derive cookie
 
-	var cookie [sha256.Size]byte
+	var cookie [sha512.Size384]byte
 	func() {
-		mac := hmac.New(sha256.New, st.mac2.secret[:])
+		mac := hmac.New(sha512.New384, st.mac2.secret[:])
 		mac.Write(src)
 		mac.Sum(cookie[:0])
 	}()
@@ -150,8 +150,8 @@ func (st *CookieChecker) CreateReply(
 
 	size := len(msg)
 
-	smac2 := size - sha256.Size
-	smac1 := smac2 - sha256.Size
+	smac2 := size - sha512.Size384
+	smac1 := smac2 - sha512.Size384
 
 	reply := new(MessageCookieReply)
 	reply.Type = MessageCookieReplyType
@@ -183,14 +183,14 @@ func (st *CookieGenerator) Init(pk NoisePublicKey) {
 	defer st.Unlock()
 
 	func() {
-		hash := hmac.New(sha256.New, nil)
+		hash := hmac.New(sha512.New384, nil)
 		hash.Write([]byte(WGLabelMAC1))
 		hash.Write(pk[:])
 		hash.Sum(st.mac1.key[:0])
 	}()
 
 	func() {
-		hash := hmac.New(sha256.New, nil)
+		hash := hmac.New(sha512.New384, nil)
 		hash.Write([]byte(WGLabelCookie))
 		hash.Write(pk[:])
 		hash.Sum(st.mac2.encryptionKey[:0])
@@ -207,7 +207,7 @@ func (st *CookieGenerator) ConsumeReply(msg *MessageCookieReply) bool {
 		return false
 	}
 
-	var cookie [sha256.Size]byte
+	var cookie [sha512.Size384]byte
 
 	aesCipher, err := aes.NewCipher(st.mac2.encryptionKey[:])
 	if err != nil {
@@ -231,8 +231,8 @@ func (st *CookieGenerator) AddMacs(msg []byte) {
 
 	size := len(msg)
 
-	smac2 := size - sha256.Size
-	smac1 := smac2 - sha256.Size
+	smac2 := size - sha512.Size384
+	smac1 := smac2 - sha512.Size384
 
 	mac1 := msg[smac1:smac2]
 	mac2 := msg[smac2:]
@@ -243,7 +243,7 @@ func (st *CookieGenerator) AddMacs(msg []byte) {
 	// set mac1
 
 	func() {
-		mac := hmac.New(sha256.New, st.mac1.key[:])
+		mac := hmac.New(sha512.New384, st.mac1.key[:])
 		mac.Write(msg[:smac1])
 		mac.Sum(mac1[:0])
 	}()
@@ -257,7 +257,7 @@ func (st *CookieGenerator) AddMacs(msg []byte) {
 	}
 
 	func() {
-		mac := hmac.New(sha256.New, st.mac2.cookie[:])
+		mac := hmac.New(sha512.New384, st.mac2.cookie[:])
 		mac.Write(msg[:smac2])
 		mac.Sum(mac2[:0])
 	}()
