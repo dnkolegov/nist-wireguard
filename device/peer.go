@@ -111,7 +111,6 @@ func (device *Device) NewPeer(pk NoisePublicKey) (*Peer, error) {
 
 	// add
 	device.peers.keyMap[pk] = peer
-	device.peers.empty.Set(false)
 
 	// start peer
 	peer.timersInit()
@@ -126,13 +125,8 @@ func (peer *Peer) SendBuffer(buffer []byte) error {
 	peer.device.net.RLock()
 	defer peer.device.net.RUnlock()
 
-	if peer.device.net.bind == nil {
-		// Packets can leak through to SendBuffer while the device is closing.
-		// When that happens, drop them silently to avoid spurious errors.
-		if peer.device.isClosed() {
-			return nil
-		}
-		return errors.New("no bind")
+	if peer.device.isClosed() {
+		return nil
 	}
 
 	peer.RLock()

@@ -55,20 +55,19 @@ type Device struct {
 		publicKey  NoisePublicKey
 	}
 
+	rate struct {
+		underLoadUntil int64
+		limiter        ratelimiter.Ratelimiter
+	}
+
 	peers struct {
-		empty        AtomicBool // empty reports whether len(keyMap) == 0
-		sync.RWMutex            // protects keyMap
+		sync.RWMutex // protects keyMap
 		keyMap       map[NoisePublicKey]*Peer
 	}
 
 	allowedips    AllowedIPs
 	indexTable    IndexTable
 	cookieChecker CookieChecker
-
-	rate struct {
-		underLoadUntil int64
-		limiter        ratelimiter.Ratelimiter
-	}
 
 	pool struct {
 		messageBuffers   *WaitPool
@@ -135,7 +134,6 @@ func removePeerLocked(device *Device, peer *Peer, key NoisePublicKey) {
 
 	// remove from peer map
 	delete(device.peers.keyMap, key)
-	device.peers.empty.Set(len(device.peers.keyMap) == 0)
 }
 
 // changeState attempts to change the device state to match want.
@@ -279,11 +277,12 @@ func (device *Device) SetPrivateKey(sk NoisePrivateKey) error {
 	return nil
 }
 
-func NewDevice(tunDevice tun.Device, logger *Logger) *Device {
+func NewDevice(tunDevice tun.Device, bind conn.Bind, logger *Logger) *Device {
 	device := new(Device)
 	device.state.state = uint32(deviceStateDown)
 	device.closed = make(chan struct{})
 	device.log = logger
+	device.net.bind = bind
 	device.tun.device = tunDevice
 	mtu, err := device.tun.device.MTU()
 	if err != nil {
@@ -301,11 +300,6 @@ func NewDevice(tunDevice tun.Device, logger *Logger) *Device {
 	device.queue.handshake = newHandshakeQueue()
 	device.queue.encryption = newOutboundQueue()
 	device.queue.decryption = newInboundQueue()
-
-	// prepare net
-
-	device.net.port = 0
-	device.net.bind = nil
 
 	// start workers
 
@@ -414,7 +408,6 @@ func unsafeCloseBind(device *Device) error {
 	}
 	if netc.bind != nil {
 		err = netc.bind.Close()
-		netc.bind = nil
 	}
 	netc.stopping.Wait()
 	return err
@@ -474,16 +467,14 @@ func (device *Device) BindUpdate() error {
 	// bind to new port
 	var err error
 	netc := &device.net
-	netc.bind, netc.port, err = conn.CreateBind(netc.port)
+	netc.port, err = netc.bind.Open(netc.port)
 	if err != nil {
-		netc.bind = nil
 		netc.port = 0
 		return err
 	}
 	netc.netlinkCancel, err = device.startRouteListener(netc.bind)
 	if err != nil {
 		netc.bind.Close()
-		netc.bind = nil
 		netc.port = 0
 		return err
 	}
