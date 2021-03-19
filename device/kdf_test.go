@@ -21,7 +21,7 @@ type KDFTest struct {
 
 func assertEquals(t *testing.T, a string, b string) {
 	if a != b {
-		t.Log("expected", a, "=", b)
+		t.Fatal("expected", a, "=", b)
 	}
 }
 
