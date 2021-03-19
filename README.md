@@ -1,6 +1,36 @@
-# Go Implementation of [WireGuard](https://www.wireguard.com/)
+# NIST-WireGuard Go Implementation of [WireGuard](https://www.wireguard.com/)
 
-This is an implementation of WireGuard in Go.
+This is a reference implementation of the WireGuard protocol with NIST cipher suites in Go.
+
+The implementation is based on WireGuard-Go project.
+
+It has the same semantics as the original WireGuard protocol but employs the cryptographic algorithms defined by the Russian national standards (GOST).
+
+## Warnings
+- The code is experimental. You must not use this in production
+- The code is not audited
+- Breaking changes are expected
+
+## Quickstart
+
+### Build
+
+```
+make
+```
+
+### Test
+
+```
+make gotest
+```
+
+### Protocol Benchmark
+
+```
+make tests
+```
+---
 
 ## Usage
 
