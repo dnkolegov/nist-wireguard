@@ -1,4 +1,4 @@
-# NIST-WireGuard Go Implementation of [WireGuard](https://www.wireguard.com/)
+# NIST-WireGuard Go Implementation
 
 This is a reference implementation of the WireGuard protocol with NIST cipher suites in Go.
 
@@ -10,6 +10,12 @@ It has the same semantics as the original WireGuard protocol but employs the cry
 - The code is experimental. You must not use this in production
 - The code is not audited
 - Breaking changes are expected
+
+## Cryptography
+The following cryptographic primitives are used:
+- AES-GCM-256
+- SHA384
+- P-521
 
 ## Quickstart
 
