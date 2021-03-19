@@ -47,16 +47,12 @@ func KDF2(t0, t1 *[sha512.Size384]byte, key, input []byte) {
 }
 
 func KDF3(t0, t1, t2 *[sha512.Size384]byte, key, input []byte) {
-	var prk, prk1, prk2 [sha512.Size384]byte
+	var prk [sha512.Size384]byte
 	HMAC1(&prk, key, input)
 	HMAC1(t0, prk[:], []byte{0x1})
-	HMAC2(&prk1, prk[:], t0[:], []byte{0x2})
-	HMAC2(&prk2, prk[:], t1[:], []byte{0x3})
-	copy(t1[:], prk1[:32])
-	copy(t2[:], prk2[:32])
+	HMAC2(t1, prk[:], t0[:], []byte{0x2})
+	HMAC2(t2, prk[:], t1[:], []byte{0x3})
 	setZero(prk[:])
-	setZero(prk1[:])
-	setZero(prk2[:])
 }
 
 func isZero(val []byte) bool {
